@@ -1,0 +1,12 @@
+{
+  "name": "hundosniper",
+  "version": "1.0.0",
+  "description": "Plans and catches 100% IV Pokémon GO spawns from public spawn maps",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "dry-run": "node main.js --dry-run"
+  },
+  "license": "ISC"
+}
