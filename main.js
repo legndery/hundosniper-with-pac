@@ -12,30 +12,31 @@ import { startWebServer } from "./web/server.js";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
+// one refresh; returns true when a pokemon was caught, so the next poll can start right away
 async function tick() {
   const mons = await poll();
   const viable = mons.filter((m) => m.viable);
   if (!viable.length) {
-    return;
+    return false;
   }
 
   const chosen = choose(viable);
   if (!chosen) {
-    return;
+    return false;
   }
 
   // cooldown runs from the last catch, so waiting here is free; re-plan with fresh spawns
   if (config.useRoutePlanner && chosen.cooldownMs > config.refreshMs) {
     console.log(`[ROUTE] next stop in ${Math.ceil(chosen.cooldownMs / 60_000)}min, re-planning after refresh`);
     logEvent("defer", { uniqueId: chosen.uniqueId, cooldownMs: chosen.cooldownMs });
-    return;
+    return false;
   }
 
   if (DRY_RUN) {
     console.log(`[DRY] would target ${chosen.uniqueId} (${chosen.raw.source}) in ${Math.ceil(chosen.cooldownMs / 1000)}s`);
-    return;
+    return false;
   }
-  await processPokemon(chosen);
+  return processPokemon(chosen);
 }
 
 async function main() {
@@ -62,13 +63,17 @@ async function main() {
 
   while (true) {
     console.log(`Already Waiting: ${getAlreadyWaiting() / 1000 / 60}min`);
+    let caught = false;
     try {
-      await tick();
+      caught = await tick();
     } catch (err) {
       console.error(err);
       logEvent("error", { message: err?.message || String(err) });
     }
-    await sleep(config.refreshMs);
+    // after a successful catch (and its 10s stop), re-poll immediately; otherwise wait the refresh
+    if (!caught) {
+      await sleep(config.refreshMs);
+    }
   }
 }
 

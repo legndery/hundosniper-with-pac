@@ -39,7 +39,14 @@ th { color: var(--ink-2); font-weight: 600; }
 td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .ok { color: var(--good); font-weight: 600; } .no { color: var(--bad); font-weight: 600; }
 .empty { color: var(--muted); font-size: 13px; }
+.badge { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); }
+.badge.skip { color: var(--bad); border-color: var(--bad); }
+.badge.hot { color: var(--good); border-color: var(--good); }
+.counts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 #feed { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; max-height: 340px; overflow: auto; }
+#results { max-height: 420px; overflow: auto; }
+#skipped { max-height: 300px; overflow: auto; }
+#skipped th, #results th { position: sticky; top: 0; background: var(--surface); }
 #feed div { padding: 1px 0; border-bottom: 1px dotted var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #feed .t { color: var(--muted); } #feed .k { color: var(--accent); }
 label { color: var(--ink-2); font-size: 12px; }
@@ -55,16 +62,20 @@ label { color: var(--ink-2); font-size: 12px; }
     <div class="card tile"><div class="v" id="viable">–</div><div class="l">viable / fresh spawns</div></div>
     <div class="card tile"><div class="v" id="today">–</div><div class="l">caught / tried (session)</div></div>
     <div class="card tile"><div class="v" id="species">–</div><div class="l">species in caught list</div></div>
+    <div class="card tile"><div class="v" id="pool">–</div><div class="l" id="pooll">pokex pool</div></div>
     <div class="card tile"><div class="v" id="state">–</div><div class="l" id="statel">bot state</div></div>
   </div>
 
   <div class="grid">
     <div class="card"><h2>Current plan</h2><div id="plan" class="empty">waiting for a plan…</div></div>
-    <div class="card"><h2>Viable now (top 15 by cooldown)</h2><div id="top" class="empty">waiting for a poll…</div></div>
+    <div class="card"><h2>Viable targets (top 15 by cooldown)</h2><div id="top" class="empty">waiting for a poll…</div></div>
   </div>
 
+  <div class="card" style="margin-bottom:12px"><h2>Skipped <span id="skipcount" class="badge skip">0</span></h2>
+    <div id="skipcounts" class="counts"></div><div id="skipped" class="empty">nothing skipped yet</div></div>
+
   <div class="grid">
-    <div class="card"><h2>Catches</h2><div id="results" class="empty">no attempts yet</div></div>
+    <div class="card"><h2>Catches <span id="catchcount" class="badge">0</span></h2><div id="results" class="empty">no attempts yet</div></div>
     <div class="card"><h2>Live feed <label><input type="checkbox" id="noisy"> show adb/logcat/pages</label></h2><div id="feed"></div></div>
   </div>
 </div>
@@ -74,6 +85,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const time = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const mins = (ms) => (ms / 60000).toFixed(ms < 600000 ? 1 : 0) + "m";
 const NOISY = new Set(["adb", "logcat", "pokex-page", "pokemap-fetch"]);
+const HOT = new Set(["shundo", "costume", "legendary", "bruh", "priority"]);
+const badge = (rule, skip) => `<span class="badge${skip ? " skip" : HOT.has(rule) ? " hot" : ""}">${esc(rule || "")}</span>`;
 
 let names = {};
 let lastActionAt = 0;
@@ -104,16 +117,31 @@ function renderCooldown() {
 function renderResults() {
   const mine = results.filter((r) => r.at >= sessionStart);
   $("today").textContent = `${mine.filter((r) => r.caught).length} / ${mine.length}`;
+  $("catchcount").textContent = `${results.filter((r) => r.caught).length} / ${results.length}`;
   if (!results.length) return;
   $("results").className = "";
   $("results").innerHTML = table([
-    { h: "Time", v: (r) => time(r.at) },
+    { h: "When", v: (r) => new Date(r.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) },
     { h: "", v: (r) => (r.caught ? '<span class="ok">✔</span>' : '<span class="no">✘</span>'), html: 1 },
     { h: "Pokémon", v: (r) => commits[r.uniqueId]?.name || names[parseInt(r.uniqueId)] || r.uniqueId },
     { h: "Source", v: (r) => commits[r.uniqueId]?.source || "" },
     { h: "Hop", v: (r) => (commits[r.uniqueId] ? commits[r.uniqueId].distanceKm.toFixed(1) + " km" : ""), n: 1 },
     { h: "Catch", v: (r) => Math.round(r.catchWaitMs / 1000) + "s", n: 1 },
-  ], results.slice(-25).reverse());
+  ], [...results].reverse());
+}
+
+function renderSkipped(list) {
+  $("skipcount").textContent = list.length;
+  const byReason = {};
+  for (const m of list) byReason[m[10]] = (byReason[m[10]] || 0) + 1;
+  $("skipcounts").innerHTML = Object.entries(byReason).map(([r, n]) => `${badge(r, true)} <span class="empty">${n}</span>`).join(" ");
+  if (!list.length) { $("skipped").className = "empty"; $("skipped").textContent = "nothing viable is being skipped"; return; }
+  $("skipped").className = "";
+  $("skipped").innerHTML = table([
+    { h: "Pokémon", v: (m) => m[1] }, { h: "Why skipped", v: (m) => badge(m[10], true), html: 1 },
+    { h: "Source", v: (m) => m[9] || "" }, { h: "Hop", v: (m) => m[5].toFixed(1) + " km", n: 1 },
+    { h: "Despawn", v: (m) => time(m[4] * 1000), n: 1 },
+  ], list);
 }
 
 function renderFeedLine(e) {
@@ -141,11 +169,13 @@ function handle(e) {
       if (e.top?.length) {
         $("top").className = "";
         $("top").innerHTML = table([
-          { h: "Pokémon", v: (m) => m[1] }, { h: "Source", v: (m) => m[9] || "" },
+          { h: "Pokémon", v: (m) => m[1] }, { h: "Rule", v: (m) => badge(m[10]), html: 1 },
+          { h: "Source", v: (m) => m[9] || "" },
           { h: "Hop", v: (m) => m[5].toFixed(1) + " km", n: 1 }, { h: "Wait", v: (m) => mins(m[7]), n: 1 },
           { h: "Despawn", v: (m) => time(m[4] * 1000), n: 1 },
         ], e.top);
-      } else { $("top").className = "empty"; $("top").textContent = "nothing viable right now"; }
+      } else { $("top").className = "empty"; $("top").textContent = "nothing viable to target right now"; }
+      renderSkipped(e.skipped || []);
       if (botState !== "catching") setState("polling", `last poll ${time(e.at)}`);
       break;
     case "plan":
@@ -157,6 +187,10 @@ function handle(e) {
           { h: "Despawn", v: (s) => time(s.despawnAt), n: 1 },
         ], e.stops) + `<p class="empty">route value ${e.value.toFixed(2)} · ${e.candidates} candidates · planned ${time(e.at)}</p>`;
       } else { $("plan").className = "empty"; $("plan").textContent = "no route possible right now"; }
+      break;
+    case "pokex-pool":
+      $("pool").textContent = e.size;
+      $("pooll").textContent = `pokex pool · +${e.added} new, −${e.expired} expired, ${e.fromPoll} this poll`;
       break;
     case "defer": setState("waiting", `next stop in ${mins(e.cooldownMs)}, re-planning`); break;
     case "commit":

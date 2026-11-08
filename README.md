@@ -16,11 +16,12 @@ Live UI: http://127.0.0.1:8787 (loopback only). From another machine:
 
 | File | What it does |
 |---|---|
-| `config.js` | every flag: sources, refresh, planner, cooldown table, pokex country/limit/Silver, lists, web |
+| `config.js` | every flag: sources, refresh, planner, cooldown table, pokex country/page delay/Silver, lists, web |
 | `main.js` | startup (reset, web server) + main loop: poll -> choose -> defer or catch |
 | `poll.js` | fetch all enabled sources, merge, normalize, log `poll` snapshot |
 | `sources/pokemap.js` | the 4 *pokemap.com sites, incremental cursor |
 | `sources/pokex.js` | pokexperience paging, row filtering, raw spawn shape |
+| `sources/pokex-pool.js` | keeps pokex spawns across polls until despawn or attempted (`data/pokex-pool.json`) |
 | `sources/pokex-session.js` | optional Silver tier: session headers, coord resolve, quota |
 | `core/normalize-spawns.js` | raw spawn -> distance, cooldown, viability (raw shape documented here) |
 | `core/priority-rules.js` | RULES (shundo/costume/legendary/skip/caught/rarity) and `scoreOf` |
@@ -31,13 +32,13 @@ Live UI: http://127.0.0.1:8787 (loopback only). From another machine:
 | `core/bot-state.js` | state.json load/save, reset from phone location |
 | `core/pokemon-data.js` | pokedex, rarity tiers, legendaries, caught list |
 | `core/distance-cooldown.js` | distance between points, cooldown lookup (table lives in `config.js`) |
-| `core/event-log.js` | events.jsonl log + in-memory feed for the UI |
+| `core/event-log.js` | events.jsonl log (level in `config.eventLog`) + in-memory feed for the UI |
 | `web/server.js` | read-only UI server: `/`, `/api/status`, `/api/events` |
 
 ## Data
 
 - `static/` read-only: `pokedex.csv`, `rarity.json`, `legendaries.csv`, `ui.html`
-- `data/` runtime: `state.json`, `caughtHundos.csv`, `events.jsonl`, optional `pokex-curl.txt`
+- `data/` runtime: `state.json`, `caughtHundos.csv`, `events.jsonl`, `pokex-pool.json`, optional `pokex-curl.txt`
   (state, events and the session file are gitignored)
 
 Set `"resetLastLocation": true` in `data/state.json` before a run to start the cooldown from now at the phone's current location.

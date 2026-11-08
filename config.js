@@ -64,13 +64,18 @@ export const config = {
   pokex: {
     url: "https://pokexperience.com/finder-search.php",
     country: "DE",
-    // ~37% of DE rows lack despawn, so fetch extra
-    limit: 160,
+    // every page is fetched; wait this long between page requests
+    pageDelayMs: 1000,
     // true = also use Silver rows via the logged-in session (data/pokex-curl.txt)
     useSilver: false,
     silverTiers: ["B", "S"],
     // locked rows are rounded (up to ~0.7km off), so plan cooldowns as if that much farther
     lockedCoordErrorKm: 0.8,
+  },
+
+  // events.jsonl: "info" = meaningful events only (small file), "debug" = also adb/logcat/pages and per-poll spawn snapshots
+  eventLog: {
+    level: "info",
   },
 
   // read-only live UI; loopback only, reach it from another machine with an ssh -L tunnel

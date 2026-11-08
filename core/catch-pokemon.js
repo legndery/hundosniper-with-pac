@@ -10,6 +10,7 @@ import { sleep } from "./sleep.js";
 // consecutive timeouts with no encounter at all, e.g. full pokemon storage
 let noEncounterStreak = 0;
 
+// returns true only when the pokemon was caught
 export async function processPokemon(mon) {
   // locked coords are resolved by their source before any side effect
   if (mon.raw.locked) {
@@ -23,7 +24,7 @@ export async function processPokemon(mon) {
     if (!exact) {
       // not marked seen, so it can be retried next poll
       console.log(`[RESOLVE] could not resolve coords for ${pokedex[mon.pokemonId]}, skipping`);
-      return;
+      return false;
     }
     mon.lat = exact.lat;
     mon.lon = exact.lon;
@@ -90,4 +91,5 @@ export async function processPokemon(mon) {
     seenCount: Object.keys(state.seen).length,
   });
   console.log("[DONE]");
+  return caught;
 }

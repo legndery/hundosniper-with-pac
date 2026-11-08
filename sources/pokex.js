@@ -1,7 +1,12 @@
 // pokexperience.com: hundos for one country, best first; free rows, optional Silver rows
 import { config } from "../config.js";
 import { logEvent } from "../core/event-log.js";
+import { mergeIntoPool } from "./pokex-pool.js";
 import { isSilverRow, resolveSilverCoords, sessionHeaders, silverAvailable } from "./pokex-session.js";
+
+// safety stop in case the site's total ever misbehaves
+const MAX_PAGES = 100;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
@@ -56,14 +61,17 @@ async function fetchPage(offset) {
   });
 }
 
-// pages until limit or end of results; server caps page size (20 anon, 50 logged in)
-async function fetchSpawns() {
+// every page until the end of results, one page per pageDelayMs; server caps page size (20 anon, 50 logged in)
+async function fetchAllPages() {
   const mons = [];
   // ordering shifts between pages, so the same spawn can repeat
   const keys = new Set();
   let pageSize = 20;
 
-  for (let offset = 0; offset < config.pokex.limit; offset += pageSize) {
+  for (let page = 0, offset = 0; page < MAX_PAGES; page++, offset += pageSize) {
+    if (page > 0) {
+      await wait(config.pokex.pageDelayMs);
+    }
     const pageStart = Date.now();
     const res = await fetchPage(offset);
     if (!res.ok) {
@@ -109,6 +117,13 @@ async function fetchSpawns() {
 
   console.log(`[POKEX] ${config.pokex.country}: ${mons.length} pokemons`);
   return mons;
+}
+
+// this poll's spawns merged into the pool; returns every live spawn in the pool
+async function fetchSpawns() {
+  const live = mergeIntoPool(await fetchAllPages());
+  console.log(`[POKEX] pool: ${live.length} live spawns`);
+  return live;
 }
 
 // exact coords for a locked (Silver) spawn

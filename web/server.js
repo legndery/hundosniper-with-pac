@@ -3,15 +3,20 @@ import { readFileSync } from "fs";
 import { createServer } from "http";
 import { config } from "../config.js";
 import { caughtHundos, pokedex } from "../core/pokemon-data.js";
-import { onEvent, recentEvents } from "../core/event-log.js";
+import { olderCatchEvents, onEvent, recentEvents } from "../core/event-log.js";
 import { getAlreadyWaiting, state } from "../core/bot-state.js";
 import { staticPath } from "../paths.js";
 
-// heavy or noisy fields the page doesn't need
+// heavy or noisy fields the page doesn't need; viable spawns split into targets and skipped
 function slim(event) {
   if (event.type === "poll") {
     const { mons, ...rest } = event;
-    return { ...rest, top: (mons || []).filter((m) => m[8]).slice(0, 15) };
+    const viable = (mons || []).filter((m) => m[8]);
+    return {
+      ...rest,
+      top: viable.filter((m) => m[11] !== "skip").slice(0, 15),
+      skipped: viable.filter((m) => m[11] === "skip"),
+    };
   }
   return event;
 }
@@ -44,6 +49,8 @@ function streamEvents(req, res) {
     connection: "keep-alive",
   });
   const send = (event) => res.write(`data: ${JSON.stringify(slim(event))}\n\n`);
+  // full catch history first, then the recent buffer, then live
+  olderCatchEvents().forEach(send);
   recentEvents().forEach(send);
   const unsubscribe = onEvent(send);
   const keepAlive = setInterval(() => res.write(": ping\n\n"), 25_000);
