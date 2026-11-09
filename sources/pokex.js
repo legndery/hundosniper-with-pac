@@ -1,6 +1,7 @@
 // pokexperience.com: hundos for one country, best first; free rows, optional Silver rows
 import { config } from "../config.js";
 import { logEvent } from "../core/event-log.js";
+import { ruleFor } from "../core/priority-rules.js";
 import { mergeIntoPool } from "./pokex-pool.js";
 import { isSilverRow, resolveSilverCoords, sessionHeaders, silverAvailable } from "./pokex-session.js";
 
@@ -11,9 +12,15 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
 
+// Silver rows only for spawns worth a quota use
+function worthSilver(row) {
+  const rule = ruleFor({ pokemonId: row.id, raw: { shiny: 0, costume: -1 } });
+  return config.pokex.silverRules.includes(rule.name);
+}
+
 // why a row was dropped, or null to keep it
 function dropReason(row, keys) {
-  if (row.free !== 1 && !isSilverRow(row)) return "notFree";
+  if (row.free !== 1 && !(isSilverRow(row) && worthSilver(row))) return "notFree";
   if (row.iv !== 100) return "notHundo";
   if (!row.dsp) return "noDespawn";
   if (keys.has(`${row.id}#${row.ts}`)) return "duplicate";

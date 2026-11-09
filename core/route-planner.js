@@ -53,7 +53,8 @@ export function planRoute(mons, opts) {
         next.push({
           path: [...node.path, mon],
           arrivals: [...node.arrivals, arrival],
-          loc: { lat: mon.lat, lon: mon.lon },
+          // the stop itself, so distanceKm can see its fields (e.g. coord error) as an origin
+          loc: mon,
           t: doneAt,
           readyAt: doneAt,
           value: node.value + value(mon),

@@ -8,6 +8,8 @@ export const config = {
   // teleport + game restart before a spawn is catchable
   processingBufferMs: 45_000,
   catchTimeoutMs: 300_000,
+  // attempted-spawn ids are forgotten after this; spawns live at most ~60min
+  seenTtlMs: 2 * 60 * 60_000,
   // true = plan a multi-catch route, false = best single target
   useRoutePlanner: true,
   debug: false,
@@ -69,6 +71,15 @@ export const config = {
     // true = also use Silver rows via the logged-in session (data/pokex-curl.txt)
     useSilver: false,
     silverTiers: ["B", "S"],
+    // Silver rows are only kept for spawns these rules decide (see core/priority-rules.js)
+    silverRules: ["shundo", "costume", "legendary", "priority", "bruh", "rarer"],
+    // planner value multiplier for Silver spawns, so free wins when they're otherwise equal
+    silverValueFactor: 0.9,
+    // site gives 10 free coords per rolling 24h; each use frees up 24h after it was used
+    silverLimit: 10,
+    silverWindowMs: 24 * 60 * 60_000,
+    // only if the block page and our own window can't tell us when to retry
+    silverRetryMs: 2 * 60 * 60_000,
     // locked rows are rounded (up to ~0.7km off), so plan cooldowns as if that much farther
     lockedCoordErrorKm: 0.8,
   },

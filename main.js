@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { processPokemon } from "./core/catch-pokemon.js";
 import { choose } from "./core/choose-pokemon.js";
 import { readPhoneLocation } from "./core/phone-adb.js";
+import { clearPin, getPin } from "./core/pin.js";
 import { logEvent } from "./core/event-log.js";
 import { applyReset, getAlreadyWaiting, state } from "./core/bot-state.js";
 import { sleep } from "./core/sleep.js";
@@ -36,7 +37,11 @@ async function tick() {
     console.log(`[DRY] would target ${chosen.uniqueId} (${chosen.raw.source}) in ${Math.ceil(chosen.cooldownMs / 1000)}s`);
     return false;
   }
-  return processPokemon(chosen);
+  const caught = await processPokemon(chosen);
+  if (getPin()?.uniqueId === chosen.uniqueId) {
+    clearPin("attempted");
+  }
+  return caught;
 }
 
 async function main() {

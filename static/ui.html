@@ -42,7 +42,13 @@ td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .badge { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); }
 .badge.skip { color: var(--bad); border-color: var(--bad); }
 .badge.hot { color: var(--good); border-color: var(--good); }
+.badge.pool { color: var(--accent); border-color: var(--accent); }
+.badge.silver { color: var(--ink-2); border-color: var(--ink-2); background: var(--track); }
 .counts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+button.go { font: inherit; font-size: 11px; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+button.go.on { background: var(--accent); color: #fff; }
+#pinbar { display: none; margin-bottom: 12px; border-color: var(--accent); }
+#pinbar.show { display: flex; align-items: center; gap: 10px; }
 #feed { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; max-height: 340px; overflow: auto; }
 #results { max-height: 420px; overflow: auto; }
 #skipped { max-height: 300px; overflow: auto; }
@@ -57,12 +63,15 @@ label { color: var(--ink-2); font-size: 12px; }
   <h1>Hundo sniper</h1>
   <p class="sub"><span class="dot" id="live"></span><span id="conn">connecting…</span> · <span id="meta"></span></p>
 
+  <div class="card" id="pinbar"><b>Pinned:</b> <span id="pinname"></span><span class="empty" id="pinnote">bot goes for it next while it stays viable</span><button class="go" onclick="pin(null)">Unpin</button></div>
+
   <div class="tiles">
     <div class="card tile"><div class="v" id="cooldown">–</div><div class="l">waited since last catch</div><div class="bar"><div id="cdbar" style="width:0%"></div></div></div>
     <div class="card tile"><div class="v" id="viable">–</div><div class="l">viable / fresh spawns</div></div>
     <div class="card tile"><div class="v" id="today">–</div><div class="l">caught / tried (session)</div></div>
     <div class="card tile"><div class="v" id="species">–</div><div class="l">species in caught list</div></div>
     <div class="card tile"><div class="v" id="pool">–</div><div class="l" id="pooll">pokex pool</div></div>
+    <div class="card tile"><div class="v" id="silver">–</div><div class="l" id="silverl">silver coords used (rolling 24h)</div></div>
     <div class="card tile"><div class="v" id="state">–</div><div class="l" id="statel">bot state</div></div>
   </div>
 
@@ -86,9 +95,12 @@ const time = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minu
 const mins = (ms) => (ms / 60000).toFixed(ms < 600000 ? 1 : 0) + "m";
 const NOISY = new Set(["adb", "logcat", "pokex-page", "pokemap-fetch"]);
 const HOT = new Set(["shundo", "costume", "legendary", "bruh", "priority"]);
+const silverBadge = (locked) => (locked ? ` <span class="badge silver" title="Silver: exact coords fetched right before teleport, uses daily quota">silver</span>` : "");
+const poolBadge = (fromPool, ago) => (fromPool ? ` <span class="badge pool" title="no longer listed by the site${ago != null ? `, last listed ${ago}m ago` : ""}">pool</span>` : "");
 const badge = (rule, skip) => `<span class="badge${skip ? " skip" : HOT.has(rule) ? " hot" : ""}">${esc(rule || "")}</span>`;
 
 let names = {};
+let pinnedId = null;
 let lastActionAt = 0;
 let sessionStart = 0;
 const commits = {};
@@ -123,7 +135,7 @@ function renderResults() {
   $("results").innerHTML = table([
     { h: "When", v: (r) => new Date(r.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) },
     { h: "", v: (r) => (r.caught ? '<span class="ok">✔</span>' : '<span class="no">✘</span>'), html: 1 },
-    { h: "Pokémon", v: (r) => commits[r.uniqueId]?.name || names[parseInt(r.uniqueId)] || r.uniqueId },
+    { h: "Pokémon", v: (r) => esc(commits[r.uniqueId]?.name || names[parseInt(r.uniqueId)] || r.uniqueId) + poolBadge(commits[r.uniqueId]?.fromPool, commits[r.uniqueId]?.listedAgoMin), html: 1 },
     { h: "Source", v: (r) => commits[r.uniqueId]?.source || "" },
     { h: "Hop", v: (r) => (commits[r.uniqueId] ? commits[r.uniqueId].distanceKm.toFixed(1) + " km" : ""), n: 1 },
     { h: "Catch", v: (r) => Math.round(r.catchWaitMs / 1000) + "s", n: 1 },
@@ -138,7 +150,7 @@ function renderSkipped(list) {
   if (!list.length) { $("skipped").className = "empty"; $("skipped").textContent = "nothing viable is being skipped"; return; }
   $("skipped").className = "";
   $("skipped").innerHTML = table([
-    { h: "Pokémon", v: (m) => m[1] }, { h: "Why skipped", v: (m) => badge(m[10], true), html: 1 },
+    { h: "Pokémon", v: (m) => esc(m[1]) + poolBadge(m[12]), html: 1 }, { h: "Why skipped", v: (m) => badge(m[10], true), html: 1 },
     { h: "Source", v: (m) => m[9] || "" }, { h: "Hop", v: (m) => m[5].toFixed(1) + " km", n: 1 },
     { h: "Despawn", v: (m) => time(m[4] * 1000), n: 1 },
   ], list);
@@ -169,7 +181,8 @@ function handle(e) {
       if (e.top?.length) {
         $("top").className = "";
         $("top").innerHTML = table([
-          { h: "Pokémon", v: (m) => m[1] }, { h: "Rule", v: (m) => badge(m[10]), html: 1 },
+          { h: "", v: (m) => `<button class="go${m[0] === pinnedId ? " on" : ""}" data-id="${esc(m[0])}" data-name="${esc(m[1])}" onclick="pin(this.dataset.id, this.dataset.name)">${m[0] === pinnedId ? "Pinned" : "Go"}</button>`, html: 1 },
+          { h: "Pokémon", v: (m) => esc(m[1]) + poolBadge(m[12]) + silverBadge(m[13]), html: 1 }, { h: "Rule", v: (m) => badge(m[10]), html: 1 },
           { h: "Source", v: (m) => m[9] || "" },
           { h: "Hop", v: (m) => m[5].toFixed(1) + " km", n: 1 }, { h: "Wait", v: (m) => mins(m[7]), n: 1 },
           { h: "Despawn", v: (m) => time(m[4] * 1000), n: 1 },
@@ -182,7 +195,7 @@ function handle(e) {
       if (e.stops?.length) {
         $("plan").className = "";
         $("plan").innerHTML = table([
-          { h: "#", v: (s) => e.stops.indexOf(s) + 1, n: 1 }, { h: "Pokémon", v: (s) => s.name },
+          { h: "#", v: (s) => e.stops.indexOf(s) + 1, n: 1 }, { h: "Pokémon", v: (s) => esc(s.name) + poolBadge(s.fromPool) + silverBadge(s.locked), html: 1 },
           { h: "Value", v: (s) => s.value.toFixed(1), n: 1 }, { h: "Arrive", v: (s) => time(s.plannedArrival), n: 1 },
           { h: "Despawn", v: (s) => time(s.despawnAt), n: 1 },
         ], e.stops) + `<p class="empty">route value ${e.value.toFixed(2)} · ${e.candidates} candidates · planned ${time(e.at)}</p>`;
@@ -190,8 +203,11 @@ function handle(e) {
       break;
     case "pokex-pool":
       $("pool").textContent = e.size;
-      $("pooll").textContent = `pokex pool · +${e.added} new, −${e.expired} expired, ${e.fromPoll} this poll`;
+      $("pooll").textContent = `pokex pool · ${e.poolOnly ?? "?"} not listed anymore · +${e.added} new, −${e.expired} expired`;
       break;
+    case "pin": showPin(e.uniqueId, e.name); break;
+    case "unpin": if (pinnedId === e.uniqueId) showPin(null); break;
+    case "silver-used": case "silver-paused": case "silver-session-invalid": refreshStatus(); break;
     case "defer": setState("waiting", `next stop in ${mins(e.cooldownMs)}, re-planning`); break;
     case "commit":
       commits[e.uniqueId] = e;
@@ -204,8 +220,51 @@ function handle(e) {
   }
 }
 
+let silver = null;
+const dur = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
+function renderSilver() {
+  if (!silver) return;
+  if (!silver.enabled) { $("silver").textContent = "off"; $("silverl").textContent = "silver tier disabled (config.pokex.useSilver)"; return; }
+  $("silver").textContent = `${silver.used} / ${silver.limit}`;
+  const now = Date.now();
+  const parts = [];
+  if (silver.pausedUntil > now) parts.push(`paused, retry in ${dur(silver.pausedUntil - now)}`);
+  else if (silver.nextSlotAt) parts.push(`next slot frees in ${dur(silver.nextSlotAt - now)}`);
+  else parts.push("all slots free");
+  $("silverl").textContent = parts.join(" · ");
+  $("silverl").title = silver.pauseText || "";
+}
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("species").textContent = s.caughtSpecies;
+    silver = s.silver; renderSilver();
+  } catch {}
+}
+
+function showPin(uniqueId, name) {
+  pinnedId = uniqueId;
+  $("pinbar").className = uniqueId ? "card show" : "card";
+  $("pinname").textContent = name || uniqueId || "";
+  document.querySelectorAll("button.go[data-id]").forEach((b) => {
+    const on = b.dataset.id === pinnedId;
+    b.className = on ? "go on" : "go";
+    b.textContent = on ? "Pinned" : "Go";
+  });
+}
+
+async function pin(uniqueId, name) {
+  try {
+    const res = await fetch("/api/pin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uniqueId, name }) });
+    const { pin } = await res.json();
+    showPin(pin?.uniqueId || null, pin?.name);
+  } catch {}
+}
+
 async function init() {
   const s = await (await fetch("/api/status")).json();
+  if (s.pin) showPin(s.pin.uniqueId, s.pin.name);
+  silver = s.silver; renderSilver();
   names = s.names; lastActionAt = s.lastActionAt;
   $("species").textContent = s.caughtSpecies;
   $("meta").textContent = `sources: ${s.sources.join(", ")} · pokex ${s.pokexCountry} · refresh ${s.refreshMs / 1000}s · planner ${s.routePlanner ? "on" : "off"}`;
@@ -219,7 +278,8 @@ async function init() {
   };
   $("noisy").onchange = renderFeed;
   setInterval(renderCooldown, 1000);
-  setInterval(async () => { try { $("species").textContent = (await (await fetch("/api/status")).json()).caughtSpecies; } catch {} }, 30000);
+  setInterval(refreshStatus, 30000);
+  setInterval(renderSilver, 1000);
 }
 init();
 </script>

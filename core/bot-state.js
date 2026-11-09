@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { config } from "../config.js";
 import { dataPath } from "../paths.js";
 
 const STATE_FILE = dataPath("state.json");
@@ -25,7 +26,19 @@ export const state = {
   ...readState(),
 };
 
+// seen ids are "pokemonId#inserted" (unix seconds); drop ones older than seenTtlMs
+function pruneSeen() {
+  const cutoffSec = (Date.now() - config.seenTtlMs) / 1000;
+  for (const id of Object.keys(state.seen)) {
+    if (Number(id.split("#")[1]) < cutoffSec) {
+      delete state.seen[id];
+    }
+  }
+}
+pruneSeen();
+
 export function saveState() {
+  pruneSeen();
   writeFileSync(STATE_FILE, JSON.stringify({ ...state, resetLastLocation: false }, null, 2));
 }
 

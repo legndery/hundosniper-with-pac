@@ -39,7 +39,7 @@ export async function poll() {
     location: state.currentLocation,
     lastActionAt: state.lastActionAt,
     seenCount: Object.keys(state.seen).length,
-    // [uniqueId, name, lat, lon, despawn s, distance km, cooldown min, cooldownMs left, viable, source, rule, score]
+    // [uniqueId, name, lat, lon, despawn s, distance km, cooldown min, cooldownMs left, viable, source, rule, score, fromPool, locked]
     mons: mons.map((m) => [
       m.uniqueId,
       pokedex[m.pokemonId],
@@ -53,6 +53,8 @@ export async function poll() {
       m.raw.source,
       ruleFor(m).name,
       ruleFor(m).score,
+      !!m.raw.fromPool,
+      !!m.raw.locked,
     ]),
   });
 

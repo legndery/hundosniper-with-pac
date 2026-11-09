@@ -40,6 +40,9 @@ export async function processPokemon(mon) {
   logEvent("commit", {
     uniqueId: mon.uniqueId,
     source: mon.raw.source,
+    // pool-only = the site stopped listing it; result tells whether it was still there
+    fromPool: !!mon.raw.fromPool,
+    listedAgoMin: mon.raw.lastListedAt ? Math.round((Date.now() - mon.raw.lastListedAt) / 60_000) : undefined,
     name: pokedex[mon.pokemonId],
     distanceKm: mon.distance,
     cooldownMs: mon.cooldownMs,

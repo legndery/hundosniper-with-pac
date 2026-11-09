@@ -18,6 +18,7 @@ function isExpired(raw, now) {
 }
 
 // add this poll's spawns, drop expired ones, save; returns every live spawn
+// each spawn gets lastListedAt (last poll that listed it) and fromPool (not in this poll)
 export function mergeIntoPool(fresh) {
   const now = Date.now();
   let added = 0;
@@ -33,6 +34,11 @@ export function mergeIntoPool(fresh) {
     if (!known || !(raw.locked && !known.locked)) {
       pool[key] = raw;
     }
+    pool[key].lastListedAt = now;
+  }
+
+  for (const raw of Object.values(pool)) {
+    raw.fromPool = raw.lastListedAt !== now;
   }
 
   for (const [key, raw] of Object.entries(pool)) {
@@ -47,6 +53,7 @@ export function mergeIntoPool(fresh) {
   } catch {}
 
   const live = Object.values(pool);
-  logEvent("pokex-pool", { fromPoll: fresh.length, added, expired, size: live.length });
+  const poolOnly = live.filter((r) => r.fromPool).length;
+  logEvent("pokex-pool", { fromPoll: fresh.length, added, expired, size: live.length, poolOnly });
   return live;
 }
